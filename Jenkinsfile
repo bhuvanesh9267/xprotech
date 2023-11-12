@@ -1,6 +1,20 @@
 pipeline{
     agent any
+    
+    environment{
+        aws_credentials = credentials('aws')
+        aws_region = 'ap-south-1'
+        aws_output = 'json'
+    }
+
     stages{
+
+        stage('aws configure'){
+            steps{
+                sh "aws configure set aws_access_key_id $aws_credentials_USR && aws configure set aws_secret_access_key $aws_credentials_PSW && aws configure set region $aws_region && aws configure set output $aws_output"
+            }
+        }
+        
         stage('create ecr'){
             steps{
                 sh "aws cloudformation create-stack --stack-name xprotechecr --template-body file://template.ecr.yaml --region 'ap-south-1'"
