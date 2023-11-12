@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+
+  ProjectName:
+    Type: String
+    Default: xprotech
+
+  RegionName:
+    Type: String
+    Default: ap-south-1a
+
+  Image:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /ecr/image
+
+  # SubnetId:
+  #   Type: AWS::SSM::Parameter::Value<String>
+  #   Default: subnetid
+
+  # VpcId:
+  #   Type: AWS::SSM::Parameter::Value<String>
+  #   Default: vpcid
+
+   
+   
+Resources:
+
+  XprotechVPC:
+    Type: AWS::EC2::VPC
+    Properties: 
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: 10.0.0.0/16
+
+  PublicSubnetRouteTable:
+   Type: AWS::EC2::RouteTable
+   Properties:
+    VpcId: !Ref XprotechVPC
+
+  PublicSubnet:
+   Type: AWS::EC2::Subnet
+   Properties:
+    AvailabilityZone: !Ref RegionName
+    VpcId: !Ref XprotechVPC
+    MapPublicIpOnLaunch: true
+    CidrBlock: 10.0.0.0/24
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  XprotechVPCInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref XprotechVPC
+      InternetGatewayId: !Ref XprotechVPCInternetGateway
+
+  XprotechRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      GatewayId: !Ref XprotechVPCInternetGateway
+      DestinationCidrBlock: 0.0.0.0/0
+
+  Cluster1:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${ProjectName}-cluster1
+
+  ExecutionRole1:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: RoleForTaskDefinition1
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccessV2
+
+  TaskDefinition1:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ProjectName}-TaskDefinition1
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt ExecutionRole1.Arn
+      ContainerDefinitions:
+        - Name: java_appliation
+          Image: !Ref Image
+          PortMappings:
+           - ContainerPort: 8080
+      RequiresCompatibilities:
+        - FARGATE
+
+  SecurityGroup1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: SecurityGroupForService1
+      GroupDescription: Security Group For service1
+      VpcId: !Ref XprotechVPC
+      SecurityGroupIngress:
+        - IpProtocol: TCP
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+
+  Service1:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${ProjectName}-Service1
+      Cluster: !Ref Cluster1
+      TaskDefinition: !Ref TaskDefinition1
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt SecurityGroup1.GroupId 
+          Subnets:
+            - !Ref PublicSubnet
+
+
+
+
+  
